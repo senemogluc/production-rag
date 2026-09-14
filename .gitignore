@@ -220,5 +220,8 @@ __marimo__/
 # Claude Code
 CLAUDE.md
 
+# Internal planning doc, not part of the shipped project
+production_rag_roadmap.md
+
 # Qdrant embedded/on-disk storage
 qdrant_data/
