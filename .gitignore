@@ -219,3 +219,6 @@ __marimo__/
 
 # Claude Code
 CLAUDE.md
+
+# Qdrant embedded/on-disk storage
+qdrant_data/

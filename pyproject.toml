@@ -1,0 +1,28 @@
+[project]
+name = "production-rag"
+version = "0.1.0"
+description = "Production-oriented RAG system, built incrementally (V0 Naive RAG)"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "langchain>=0.3",
+    "langchain-community>=0.3",
+    "pypdf>=5.0",
+    "qdrant-client>=1.12",
+    "sentence-transformers>=3.3",
+    "transformers>=4.46",
+    "torch>=2.5",
+    "accelerate>=1.1",
+    "python-dotenv>=1.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu126" }]
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
