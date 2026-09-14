@@ -41,7 +41,10 @@ Sources:
 ```
 
 Configuration (embedding model, LLM model, chunk size/overlap, top-k, storage paths) lives in
-`src/rag/config.py` and can be overridden via environment variables — see `.env.example`.
+`src/rag/config.py` and can be overridden via environment variables, see `.env.example`.
+
+See [docs/v0-retrieval-notes.md](docs/v0-retrieval-notes.md) for observed dense-only retrieval
+behavior and limitations.
 
 ## V1 — Better Retrieval
 
@@ -69,3 +72,9 @@ uv run python compare_modes.py
 
 See [docs/v1-retrieval-notes.md](docs/v1-retrieval-notes.md) for observed trade-offs between the
 retrieval modes and between chunk sizes.
+
+## Docs
+
+- [docs/code-walkthrough.md](docs/code-walkthrough.md): what each module and function does.
+- [docs/v0-retrieval-notes.md](docs/v0-retrieval-notes.md): dense-only retrieval baseline.
+- [docs/v1-retrieval-notes.md](docs/v1-retrieval-notes.md): dense vs hybrid vs reranked, chunk-size trade-offs.
