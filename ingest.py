@@ -1,4 +1,4 @@
-from rag.ingest import index_documents
+from rag.indexing import index_documents
 from rag import config
 
 if __name__ == "__main__":

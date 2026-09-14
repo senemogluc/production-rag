@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 from rag import config
 from rag.embeddings import embed_query
-from rag.ingest import get_qdrant_client
+from rag.indexing import get_qdrant_client
 
 
 @dataclass
