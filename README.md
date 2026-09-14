@@ -42,3 +42,30 @@ Sources:
 
 Configuration (embedding model, LLM model, chunk size/overlap, top-k, storage paths) lives in
 `src/rag/config.py` and can be overridden via environment variables — see `.env.example`.
+
+## V1 — Better Retrieval
+
+Dense-only search struggles on exact-term queries (API names, error codes). V1 adds BM25 sparse
+retrieval as a second named vector in the same Qdrant collection (via `fastembed`'s `Qdrant/bm25`
+model), fuses it with dense search using Qdrant's built-in Reciprocal Rank Fusion, and adds a
+cross-encoder reranker (`cross-encoder/ms-marco-MiniLM-L-6-v2`) over the fused candidates.
+
+Three retrieval modes are selectable at query time:
+
+```bash
+uv run python ask.py "torch.nn.Conv2d" --mode dense              # baseline, semantic only
+uv run python ask.py "torch.nn.Conv2d" --mode hybrid             # dense + BM25, RRF-fused
+uv run python ask.py "torch.nn.Conv2d" --mode hybrid_reranker    # hybrid, then cross-encoder reranked
+```
+
+`RETRIEVAL_MODE` in `.env`/`config.py` sets the default (`dense`). `CANDIDATE_K` controls how many
+fused candidates are pulled before reranking.
+
+To compare all three modes across a fixed set of semantic and exact-keyword queries:
+
+```bash
+uv run python compare_modes.py
+```
+
+See [docs/v1-retrieval-notes.md](docs/v1-retrieval-notes.md) for observed trade-offs between the
+retrieval modes and between chunk sizes.
