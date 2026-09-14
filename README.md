@@ -3,8 +3,8 @@ ContextForge — Production RAG &amp; Knowledge Retrieval Platform
 
 A production-oriented Retrieval-Augmented Generation system, built up incrementally from a naive
 pipeline to a fully evaluated, observable, production-grade service. See
-[production_rag_roadmap.md](production_rag_roadmap.md) for the full plan and the reasoning behind
-each stage.
+[docs/production_rag_roadmap.md](docs/production_rag_roadmap.md) for the full plan and the
+reasoning behind each stage.
 
 ## V0 — Naive RAG
 
@@ -73,8 +73,26 @@ uv run python compare_modes.py
 See [docs/v1-retrieval-notes.md](docs/v1-retrieval-notes.md) for observed trade-offs between the
 retrieval modes and between chunk sizes.
 
+## V2 — Evaluation-Driven RAG
+
+V1 compared retrieval modes on a handful of hand-picked queries, eyeballed manually. V2 replaces
+that with a labeled evaluation set and real metrics: Recall@K, MRR, nDCG, context precision/recall,
+retrieval latency, and LLM-judged answer faithfulness/relevancy, computed for all three retrieval
+modes.
+
+```bash
+uv run python evaluation/build_dataset.py   # generate the evaluation set (30 synthetic Q&A pairs)
+uv run python evaluation/run_eval.py        # run retrieval + generation eval, write results.csv
+```
+
+Result: **hybrid** beats both dense and hybrid_reranker on every metric in this evaluation
+(Recall@5 0.83 vs 0.73, plus better faithfulness/relevancy, at lower latency than the reranked
+mode), so it's the recommended default. See [docs/v2-notes.md](docs/v2-notes.md) for the full
+comparison table and interpretation, including the reranker's surprising underperformance here.
+
 ## Docs
 
 - [docs/code-walkthrough.md](docs/code-walkthrough.md): what each module and function does.
 - [docs/v0-retrieval-notes.md](docs/v0-retrieval-notes.md): dense-only retrieval baseline.
 - [docs/v1-retrieval-notes.md](docs/v1-retrieval-notes.md): dense vs hybrid vs reranked, chunk-size trade-offs.
+- [docs/v2-notes.md](docs/v2-notes.md): evaluation methodology, results table, and default configuration choice.
