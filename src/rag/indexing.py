@@ -3,10 +3,17 @@ from pathlib import Path
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, PointStruct, VectorParams
+from qdrant_client.models import (
+    Distance,
+    Modifier,
+    PointStruct,
+    SparseVectorParams,
+    VectorParams,
+)
 
 from rag import config
 from rag.embeddings import embed_texts, embedding_dimension
+from rag.sparse import embed_sparse_texts
 
 
 def load_documents(data_dir: str = config.DATA_DIR):
@@ -38,7 +45,12 @@ def ensure_collection(client: QdrantClient):
         client.delete_collection(config.QDRANT_COLLECTION)
     client.create_collection(
         collection_name=config.QDRANT_COLLECTION,
-        vectors_config=VectorParams(size=embedding_dimension(), distance=Distance.COSINE),
+        vectors_config={
+            "dense": VectorParams(size=embedding_dimension(), distance=Distance.COSINE),
+        },
+        sparse_vectors_config={
+            "sparse": SparseVectorParams(modifier=Modifier.IDF),
+        },
     )
 
 
@@ -48,7 +60,9 @@ def index_documents(data_dir: str = config.DATA_DIR) -> int:
     if not chunks:
         return 0
 
-    vectors = embed_texts([chunk.page_content for chunk in chunks])
+    texts = [chunk.page_content for chunk in chunks]
+    dense_vectors = embed_texts(texts)
+    sparse_vectors = embed_sparse_texts(texts)
 
     client = get_qdrant_client()
     ensure_collection(client)
@@ -56,14 +70,16 @@ def index_documents(data_dir: str = config.DATA_DIR) -> int:
     points = [
         PointStruct(
             id=i,
-            vector=vector,
+            vector={"dense": dense_vector, "sparse": sparse_vector},
             payload={
                 "text": chunk.page_content,
                 "source": chunk.metadata.get("source"),
                 "page": chunk.metadata.get("page"),
             },
         )
-        for i, (chunk, vector) in enumerate(zip(chunks, vectors))
+        for i, (chunk, dense_vector, sparse_vector) in enumerate(
+            zip(chunks, dense_vectors, sparse_vectors)
+        )
     ]
     client.upsert(collection_name=config.QDRANT_COLLECTION, points=points)
     return len(points)
