@@ -23,12 +23,12 @@ def _load_model():
     return tokenizer, model
 
 
-def generate_answer(question: str, context: str, max_new_tokens: int = 400) -> str:
+def generate(system_prompt: str, user_prompt: str, max_new_tokens: int = 400) -> str:
     tokenizer, model = _load_model()
 
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {question}"},
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
     ]
     prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
@@ -41,3 +41,11 @@ def generate_answer(question: str, context: str, max_new_tokens: int = 400) -> s
     )
     generated = output[0][inputs["input_ids"].shape[1] :]
     return tokenizer.decode(generated, skip_special_tokens=True).strip()
+
+
+def generate_answer(question: str, context: str, max_new_tokens: int = 400) -> str:
+    return generate(
+        SYSTEM_PROMPT,
+        f"Context:\n{context}\n\nQuestion: {question}",
+        max_new_tokens=max_new_tokens,
+    )
