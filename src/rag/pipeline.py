@@ -11,8 +11,12 @@ class Answer:
     sources: list[RetrievedChunk]
 
 
-def answer_question(question: str, top_k: int = config.TOP_K) -> Answer:
-    chunks = retrieve(question, top_k=top_k)
+def answer_question(
+    question: str,
+    mode: str = config.RETRIEVAL_MODE,
+    top_k: int = config.TOP_K,
+) -> Answer:
+    chunks = retrieve(question, mode=mode, top_k=top_k)
     context = "\n\n".join(f"[{c.source}, page {c.page}]\n{c.text}" for c in chunks)
 
     text = generate_answer(question, context)
