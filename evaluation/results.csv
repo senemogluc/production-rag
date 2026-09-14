@@ -1,0 +1,4 @@
+mode,recall_at_5,mrr,ndcg_at_5,context_precision,context_recall,avg_retrieval_latency_ms,avg_faithfulness,avg_answer_relevancy,judged_count
+dense,0.7333,0.5361,0.5862,0.2,0.7333,1006.9,4.0,4.13,30
+hybrid,0.8333,0.6233,0.6757,0.24,0.8333,990.7,4.3,4.33,30
+hybrid_reranker,0.7333,0.625,0.6521,0.2333,0.7333,1985.4,4.1,4.27,30
