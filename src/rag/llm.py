@@ -23,6 +23,11 @@ def _load_model():
     return tokenizer, model
 
 
+def warm_up():
+    """Load the model eagerly, e.g. at API startup, instead of on first request."""
+    _load_model()
+
+
 def generate(system_prompt: str, user_prompt: str, max_new_tokens: int = 400) -> str:
     tokenizer, model = _load_model()
 
