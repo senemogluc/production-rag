@@ -90,9 +90,47 @@ Result: **hybrid** beats both dense and hybrid_reranker on every metric in this 
 mode), so it's the recommended default. See [docs/v2-notes.md](docs/v2-notes.md) for the full
 comparison table and interpretation, including the reranker's surprising underperformance here.
 
+## V3 — Production API
+
+V0-V2 are scripts. V3 turns the pipeline into a FastAPI service backed by SQLite (real PostgreSQL
+arrives in V4 alongside Docker Compose), so documents can be uploaded and queried over HTTP instead
+of the CLI.
+
+```bash
+uv run python serve.py    # starts the API on http://localhost:8000, Swagger UI at /docs
+```
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /health` | Qdrant and database reachability |
+| `POST /documents` | upload a PDF, indexed in the background |
+| `GET /documents` | list documents and their status |
+| `DELETE /documents/{id}` | remove a document |
+| `POST /query` | ask a question, get an answer with sources |
+| `POST /feedback` | rate an answer by its `query_id` |
+
+```bash
+curl -F "file=@data/pytorch.pdf" http://localhost:8000/documents
+curl -X POST http://localhost:8000/query \
+  -H "Content-Type: application/json" \
+  -d '{"question": "What is a tensor in PyTorch?", "mode": "hybrid"}'
+```
+
+Pass `"mode": "hybrid"` per V2's evidence that it's the best-performing configuration.
+
+Run the API integration tests with:
+
+```bash
+uv run pytest
+```
+
+See [docs/v3-notes.md](docs/v3-notes.md) for the SQLite/Postgres decision, the incremental
+indexing design, and the model warm-up win over the CLI.
+
 ## Docs
 
 - [docs/code-walkthrough.md](docs/code-walkthrough.md): what each module and function does.
 - [docs/v0-retrieval-notes.md](docs/v0-retrieval-notes.md): dense-only retrieval baseline.
 - [docs/v1-retrieval-notes.md](docs/v1-retrieval-notes.md): dense vs hybrid vs reranked, chunk-size trade-offs.
 - [docs/v2-notes.md](docs/v2-notes.md): evaluation methodology, results table, and default configuration choice.
+- [docs/v3-notes.md](docs/v3-notes.md): production API design decisions.
