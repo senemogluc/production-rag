@@ -225,3 +225,7 @@ production_rag_roadmap.md
 
 # Qdrant embedded/on-disk storage
 qdrant_data/
+
+# V3 API local state
+app.db
+data/uploads/
