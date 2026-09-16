@@ -2,7 +2,7 @@ import json
 import time
 from pathlib import Path
 
-import metrics
+from evaluation import metrics
 
 from rag import config
 from rag.retrieval import VALID_MODES, retrieve

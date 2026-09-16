@@ -1,6 +1,6 @@
 import re
 
-from retrieval_eval import load_dataset
+from evaluation.retrieval_eval import load_dataset
 
 from rag import config
 from rag.llm import generate

@@ -1,8 +1,8 @@
 import csv
 from pathlib import Path
 
-from generation_eval import evaluate_generation
-from retrieval_eval import evaluate_retrieval, load_dataset
+from evaluation.generation_eval import evaluate_generation
+from evaluation.retrieval_eval import evaluate_retrieval, load_dataset
 
 from rag import config
 from rag.retrieval import VALID_MODES
