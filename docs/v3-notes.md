@@ -53,7 +53,7 @@ instead, since there's no DB row involved there.
 ## Model warm-up
 
 The CLI (`ask.py`) reloads the embedding, sparse, and LLM models on every process invocation, a
-known V0 limitation (`docs/v0-retrieval-notes.md`). The API is long-lived, so its FastAPI
+known V0 limitation (`docs/v0-notes.md`). The API is long-lived, so its FastAPI
 `lifespan` handler loads all three once at startup:
 
 ```text

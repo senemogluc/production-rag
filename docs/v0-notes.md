@@ -41,4 +41,4 @@ Two real limitations showed up during manual testing:
 These two gaps, exact-term recall and unmeasured faithfulness, are the concrete reasons the
 roadmap introduces hybrid retrieval and reranking next. V0 proved the pipeline works end to end;
 it didn't prove the retrieved chunks were the *best* chunks available. See
-`docs/v1-retrieval-notes.md` for how hybrid search and reranking changed these results.
+`docs/v1-notes.md` for how hybrid search and reranking changed these results.

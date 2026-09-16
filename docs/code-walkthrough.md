@@ -97,7 +97,7 @@ every stage can be swapped without the others caring how the score was computed.
   Each vector is a set of (token id, weight) pairs, not a dense array, since most tokens in the
   vocabulary don't appear in a given chunk.
 - `embed_sparse_query(text)`: used at **query** time. Same shape, but computed slightly
-  differently (see the note in `docs/v1-retrieval-notes.md`): document vectors carry a per-term
+  differently (see the note in `docs/v1-notes.md`): document vectors carry a per-term
   weight, query vectors are unweighted (all values are 1), and Qdrant applies IDF weighting at
   query time via the `Modifier.IDF` setting on the collection.
 

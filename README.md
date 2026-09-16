@@ -43,8 +43,8 @@ Sources:
 Configuration (embedding model, LLM model, chunk size/overlap, top-k, storage paths) lives in
 `src/rag/config.py` and can be overridden via environment variables, see `.env.example`.
 
-See [docs/v0-retrieval-notes.md](docs/v0-retrieval-notes.md) for observed dense-only retrieval
-behavior and limitations.
+See [docs/v0-notes.md](docs/v0-notes.md) for observed dense-only retrieval behavior and
+limitations.
 
 ## V1 — Better Retrieval
 
@@ -70,8 +70,8 @@ To compare all three modes across a fixed set of semantic and exact-keyword quer
 uv run python compare_modes.py
 ```
 
-See [docs/v1-retrieval-notes.md](docs/v1-retrieval-notes.md) for observed trade-offs between the
-retrieval modes and between chunk sizes.
+See [docs/v1-notes.md](docs/v1-notes.md) for observed trade-offs between the retrieval modes and
+between chunk sizes.
 
 ## V2 — Evaluation-Driven RAG
 
@@ -130,7 +130,8 @@ indexing design, and the model warm-up win over the CLI.
 ## Docs
 
 - [docs/code-walkthrough.md](docs/code-walkthrough.md): what each module and function does.
-- [docs/v0-retrieval-notes.md](docs/v0-retrieval-notes.md): dense-only retrieval baseline.
-- [docs/v1-retrieval-notes.md](docs/v1-retrieval-notes.md): dense vs hybrid vs reranked, chunk-size trade-offs.
+- [docs/v0-notes.md](docs/v0-notes.md): dense-only retrieval baseline.
+- [docs/v1-notes.md](docs/v1-notes.md): dense vs hybrid vs reranked, chunk-size trade-offs.
 - [docs/v2-notes.md](docs/v2-notes.md): evaluation methodology, results table, and default configuration choice.
 - [docs/v3-notes.md](docs/v3-notes.md): production API design decisions.
+- [docs/v4-notes.md](docs/v4-notes.md): containerization decisions (Part 1).

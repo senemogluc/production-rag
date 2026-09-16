@@ -32,7 +32,7 @@ generation.)
 ## What this confirms
 
 **Hybrid beats dense on every retrieval and generation metric**, not just the handful of queries
-eyeballed in `docs/v1-retrieval-notes.md`. Recall@5 goes from 0.733 to 0.833, meaning hybrid finds
+eyeballed in `docs/v1-notes.md`. Recall@5 goes from 0.733 to 0.833, meaning hybrid finds
 the correct page in its top 5 for 25 of 30 questions versus 22 of 30 for dense. Faithfulness and
 relevancy both improve too: better retrieval gives the LLM better context to answer from. Hybrid is
 also marginally *faster* than dense here (991ms vs 1007ms), within noise.
