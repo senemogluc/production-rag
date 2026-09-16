@@ -81,8 +81,8 @@ retrieval latency, and LLM-judged answer faithfulness/relevancy, computed for al
 modes.
 
 ```bash
-uv run python evaluation/build_dataset.py   # generate the evaluation set (30 synthetic Q&A pairs)
-uv run python evaluation/run_eval.py        # run retrieval + generation eval, write results.csv
+uv run python -m evaluation.build_dataset   # generate the evaluation set (30 synthetic Q&A pairs)
+uv run python -m evaluation.run_eval        # run retrieval + generation eval, write results.csv
 ```
 
 Result: **hybrid** beats both dense and hybrid_reranker on every metric in this evaluation
@@ -118,14 +118,45 @@ curl -X POST http://localhost:8000/query \
 
 Pass `"mode": "hybrid"` per V2's evidence that it's the best-performing configuration.
 
-Run the API integration tests with:
-
-```bash
-uv run pytest
-```
-
 See [docs/v3-notes.md](docs/v3-notes.md) for the SQLite/Postgres decision, the incremental
 indexing design, and the model warm-up win over the CLI.
+
+## V4 — Production Engineering
+
+V4 makes the stack operable: real containerized data services, full LLM observability, and
+automated testing/CI.
+
+```bash
+docker compose up -d      # starts qdrant + postgres containers
+uv run python ingest.py   # now indexes into the containerized Qdrant (QDRANT_URL is set by default)
+uv run python serve.py    # now talks to containerized Postgres (DATABASE_URL is set by default)
+```
+
+Every query is traced end to end via [Langfuse Cloud](https://cloud.langfuse.com) (free tier):
+retrieval, embedding, reranking (when used), and generation each show up as their own span with
+scores, latencies, and token counts, nested under one trace per question. Set
+`LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` in `.env` to enable it, leave them blank and the app
+runs identically with tracing silently disabled.
+
+Tests are split into two groups, **run as separate `pytest` invocations, not combined** (see
+[docs/v4-notes.md](docs/v4-notes.md) for the real bug this avoids):
+
+```bash
+uv run pytest tests/ --ignore=tests/api   # unit tests + evaluation regression test
+uv run pytest tests/api/                  # API integration tests, fully isolated
+```
+
+[.github/workflows/ci.yml](.github/workflows/ci.yml) runs both on every push/PR: `ingest.py`
+against an embedded (Docker-free) Qdrant, then the full test suite, including a regression check
+that Recall@5/MRR don't drop far below V2's committed baseline.
+
+Both Qdrant and Postgres fall back to their V0-V3 Docker-free modes (embedded Qdrant, SQLite) by
+blanking `QDRANT_URL`/overriding `DATABASE_URL`, verified working, not just documented.
+
+See [docs/v4-notes.md](docs/v4-notes.md) for the host-run-API-vs-GPU-passthrough decision, why
+observability is Langfuse Cloud rather than self-hosted, and two real bugs found while building
+this (a 32MB Qdrant request-size limit, and a test-isolation bug that silently zeroed out a
+regression check).
 
 ## Docs
 
@@ -134,4 +165,4 @@ indexing design, and the model warm-up win over the CLI.
 - [docs/v1-notes.md](docs/v1-notes.md): dense vs hybrid vs reranked, chunk-size trade-offs.
 - [docs/v2-notes.md](docs/v2-notes.md): evaluation methodology, results table, and default configuration choice.
 - [docs/v3-notes.md](docs/v3-notes.md): production API design decisions.
-- [docs/v4-notes.md](docs/v4-notes.md): containerization decisions (Part 1).
+- [docs/v4-notes.md](docs/v4-notes.md): containerization, observability, and testing/CI decisions.

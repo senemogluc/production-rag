@@ -1,7 +1,7 @@
 # Code walkthrough
 
-What each part of the codebase does, function by function. Covers V0 through V4 Part 1
-(containerization; V4's Langfuse tracing/tests/CI are Part 2, not written yet).
+What each part of the codebase does, function by function. Covers V0 through V4 (containerization,
+observability, testing, CI).
 
 ## Layout
 
@@ -16,6 +16,7 @@ src/rag/
   reranker.py    cross-encoder reranking
   llm.py         local Hugging Face model, generates answers and judges
   pipeline.py    glues retrieval + generation together
+  tracing.py     Langfuse tracing wrapper, no-op if not configured
   db.py          SQLAlchemy engine/session setup
   db_models.py   DocumentRecord, QueryLog, FeedbackRecord ORM models
   schemas.py     Pydantic request/response models for the API
@@ -26,7 +27,7 @@ ask.py            CLI: ask a question
 compare_modes.py  CLI: compare retrieval modes side by side
 serve.py          CLI: start the FastAPI service
 
-evaluation/
+evaluation/                (a real package, see the note in its section below)
   metrics.py          Recall@K, MRR, nDCG, context precision (pure functions)
   build_dataset.py    generates evaluation/dataset.json from the indexed corpus
   retrieval_eval.py   scores retrieval only (fast, no LLM)
@@ -34,11 +35,16 @@ evaluation/
   run_eval.py         runs both stages for all 3 modes, writes results.csv
 
 tests/
-  conftest.py    isolates tests from the real qdrant_data/app.db
-  test_api.py    API integration tests
+  test_metrics.py           unit tests for evaluation/metrics.py
+  test_indexing.py          unit tests for point-id generation and chunking
+  test_eval_regression.py   retrieval-quality regression test against V2's baseline
+  api/
+    conftest.py    isolates the API tests from the real qdrant_data/app.db
+    test_api.py    API integration tests
 
-docker-compose.yml   qdrant, postgres, self-hosted langfuse (V4)
-Dockerfile           API image (build-only, not part of the default compose stack)
+.github/workflows/ci.yml   GitHub Actions: ingest + both test groups, on push/PR
+docker-compose.yml         qdrant, postgres (V4; observability is Langfuse Cloud, not a container)
+Dockerfile                 API image (build-only, not part of the default compose stack)
 ```
 
 ## config.py
@@ -63,6 +69,8 @@ setting env vars (or `.env`), not by editing code.
 | `DATABASE_URL` | Postgres compose service | app DB; use a `sqlite:///` URL to skip Docker |
 | `EVAL_NUM_QUESTIONS` / `EVAL_SEED` | 30 / 42 | evaluation dataset size and sampling seed |
 | `EVAL_DATASET_PATH` / `EVAL_RESULTS_PATH` | `evaluation/dataset.json` / `results.csv` | eval I/O |
+| `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` | blank | Langfuse Cloud keys; blank disables tracing |
+| `LANGFUSE_BASE_URL` | `https://cloud.langfuse.com` | Langfuse Cloud region endpoint |
 
 ## types.py
 
@@ -84,7 +92,8 @@ every stage can be swapped without the others caring how the score was computed.
   Wrapped in `@lru_cache(maxsize=1)` so it is only loaded once per process, not once per call.
 - `embed_texts(texts)`: takes a list of strings, returns a list of embedding vectors (as plain
   Python lists). `normalize_embeddings=True` makes the vectors unit-length, which is what lets
-  cosine similarity work correctly in Qdrant.
+  cosine similarity work correctly in Qdrant. Wrapped in a `tracing.observation(as_type="embedding")`
+  span so embedding latency shows up separately from retrieval in Langfuse.
 - `embed_query(text)`: same as above for a single string, used when embedding the user's question.
 - `embedding_dimension()`: returns the vector size of the loaded model, used once at collection
   creation time so Qdrant knows how big to make the dense vector slot.
@@ -150,7 +159,9 @@ to know which mode produced them.
   `candidate_k` candidates) fused with `FusionQuery(fusion=Fusion.RRF)`, Qdrant's built-in
   Reciprocal Rank Fusion. `score` here is the RRF score, not a similarity, so it isn't comparable
   across modes.
-- `retrieve(question, mode=config.RETRIEVAL_MODE, top_k=config.TOP_K)`: the public entry point.
+- `retrieve(question, mode=config.RETRIEVAL_MODE, top_k=config.TOP_K)`: the public entry point,
+  wrapped in a `tracing.observation(as_type="retriever")` span (mode and `top_k` as metadata, the
+  retrieved `(source, page, score)` list as output) covering whichever branch runs.
   - `mode="dense"` calls `_retrieve_dense` directly.
   - `mode="hybrid"` calls `_retrieve_hybrid` with `candidate_k=top_k` (no reranking stage, so it
     only needs to fetch exactly what it returns).
@@ -165,7 +176,8 @@ to know which mode produced them.
   cross-encoder (this is why it's more expensive than dense/BM25: it looks at the question and
   each candidate *together*, instead of comparing precomputed vectors), sorts by that score
   descending, and returns the top `top_k`. The returned `RetrievedChunk.score` is the raw
-  cross-encoder logit, unbounded and not comparable to cosine or RRF scores.
+  cross-encoder logit, unbounded and not comparable to cosine or RRF scores. Wrapped in a
+  `tracing.observation(as_type="span")` recording candidate count and the reranked scores.
 
 ## llm.py
 
@@ -179,7 +191,10 @@ to know which mode produced them.
   (`tokenizer.apply_chat_template`), and greedily generates (`do_sample=False`, so outputs are
   deterministic) up to `max_new_tokens` new tokens. Returns just the newly generated text, with
   the echoed prompt stripped off. Used both for answering questions and, in `evaluation/
-  generation_eval.py`, for judging them, one code path for both.
+  generation_eval.py`, for judging them, one code path for both. Wrapped in a
+  `tracing.observation(as_type="generation")` span recording the model name, prompt, output, and
+  input/output token counts (from `inputs["input_ids"].shape` and the generated token count, a
+  local `transformers` model has no built-in usage/cost reporting like a hosted API would).
 - `generate_answer(question, context, max_new_tokens=400)`: thin wrapper around `generate()` with
   a fixed system prompt instructing the model to answer only from the provided context.
 
@@ -192,7 +207,27 @@ to know which mode produced them.
   its `[source, page N]` so the LLM can see where each snippet came from), calls
   `generate_answer()`, and returns an `Answer`. This is the one function `ask.py`, `api.py`'s
   `/query` endpoint, and `evaluation/generation_eval.py` all call, one shared path for "how the
-  system answers a question."
+  system answers a question." Wraps its body in a `tracing.observation(as_type="chain")` span,
+  this is the trace root: everything `retrieve()`/`rerank()`/`generate()` open while inside this
+  call nests underneath it automatically (OpenTelemetry context propagation, no ids passed
+  by hand). See `docs/v4-notes.md` for a real captured trace.
+
+## tracing.py (V4)
+
+Thin wrapper around the `langfuse` SDK so the rest of the codebase never has to check "is
+observability configured" itself.
+
+- `ENABLED`: `True` only if both `config.LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` are set.
+- `observation(name, as_type="span", **kwargs)`: a context manager. If disabled, yields `None`
+  (callers guard updates with `if obs:`). If enabled, delegates to the Langfuse client's
+  `start_as_current_observation()`, which both creates the span/generation/embedding/retriever
+  observation *and* makes it the active parent for anything opened inside the `with` block.
+- `score_current_trace(name, value, **kwargs)`: attaches a score to whatever trace is currently
+  active. Not called anywhere in the live app path yet (there's no ground truth to score against
+  at request time), available for future use, e.g. thumbs-up/down feedback forwarded to Langfuse.
+- `flush()`: force-sends buffered traces. Called at the end of `ask.py`'s `main()` (a short-lived
+  CLI process might exit before the SDK's background batching flushes on its own) and in
+  `api.py`'s `lifespan()` after `yield` (on API shutdown).
 
 ## db.py, db_models.py (V3)
 
@@ -234,7 +269,14 @@ warms up all three models (embedding, sparse, LLM) so the first request isn't sl
 - `POST /feedback`: 404 if `query_id` is given but doesn't exist, otherwise stores a
   `FeedbackRecord`.
 
-## evaluation/ (V2)
+## evaluation/ (V2, V4 made it a real package)
+
+`evaluation/` has an `__init__.py` (added in V4) and its modules import each other with absolute
+paths (`from evaluation import metrics`, `from evaluation.retrieval_eval import load_dataset`),
+so it works both as a script (`uv run python -m evaluation.run_eval`, note the `-m` and dotted
+path, not `python evaluation/run_eval.py`) and as an importable package from `tests/
+test_eval_regression.py`. `pyproject.toml`'s `[tool.pytest.ini_options] pythonpath = ["."]` is
+what makes `evaluation.*` resolvable from pytest.
 
 - `metrics.py`: `hit_rank`, `recall_at_k`, `reciprocal_rank`, `ndcg_at_k`, `context_precision`,
   pure functions operating on `(source, page)` tuples, no I/O.
@@ -249,17 +291,36 @@ warms up all three models (embedding, sparse, LLM) so the first request isn't sl
   faithfulness and answer relevancy 1-5 each.
 - `run_eval.py`: runs both stages for all three modes, writes `evaluation/results.csv`.
 
-## tests/ (V3)
+## tests/ (V3 API tests, V4 added unit + regression tests)
 
-- `conftest.py`: sets isolated env vars (`QDRANT_URL=""` to force embedded mode, a temp
-  `QDRANT_PATH`, a temp SQLite `DATABASE_URL`, a distinct `QDRANT_COLLECTION`) **at module load
-  time**, before `rag.config` or `rag.api` is ever imported, since `config.py` reads env vars at
-  import time. This keeps the test suite from touching the real `qdrant_data/`/`app.db` or
-  needing a running Qdrant/Postgres container. A session-scoped `client` fixture wraps the FastAPI
+**Run `tests/api/` and the rest of `tests/` as two separate `pytest` invocations, never
+combined**, see `docs/v4-notes.md` for the real bug (a silent `Recall@5 = 0.000`) that happens if
+you don't:
+
+```bash
+uv run pytest tests/ --ignore=tests/api
+uv run pytest tests/api/
+```
+
+- `tests/api/conftest.py`: sets isolated env vars (`QDRANT_URL=""` to force embedded mode, a temp
+  `QDRANT_PATH`, a temp SQLite `DATABASE_URL`, a distinct `QDRANT_COLLECTION`, blanked Langfuse
+  keys) **at module load time**, before `rag.config` or `rag.api` is ever imported, since
+  `config.py` reads env vars at import time and caches them as module constants, so this can't be
+  done later inside a fixture. This keeps the API test suite from touching the real
+  `qdrant_data/`/`app.db`/Langfuse project. A session-scoped `client` fixture wraps the FastAPI
   app in a `TestClient` (models load once for the whole test run); `sample_pdf_path` slices the
   first 2 pages of `data/pytorch.pdf` for fast upload tests.
-- `test_api.py`: health check; full document lifecycle (upload, poll until `ready`, query,
-  feedback, delete, confirm gone); two 404 cases (unknown `query_id`, unknown document id).
+- `tests/api/test_api.py`: health check; full document lifecycle (upload, poll until `ready`,
+  query, feedback, delete, confirm gone); two 404 cases (unknown `query_id`, unknown document id).
+- `tests/test_metrics.py`: unit tests for every `evaluation/metrics.py` function, pure logic, no
+  fixtures needed.
+- `tests/test_indexing.py`: unit tests for `_point_id` (deterministic, differs by document/chunk
+  index, no collisions across a batch) and `chunk_documents` (splits long text, keeps short text
+  as one chunk), using plain `langchain_core.documents.Document` fixtures, no model loading.
+- `tests/test_eval_regression.py`: loads the committed `evaluation/dataset.json`, runs
+  `evaluate_retrieval(dataset, mode="hybrid")` against the live index, asserts Recall@5 and MRR
+  stay within 0.15 of V2's committed baseline. Deliberately lives outside `tests/api/`'s isolation,
+  it needs the real, fully-indexed corpus, not an empty temp one.
 
 ## CLI scripts
 
@@ -279,3 +340,13 @@ containers live here either.
 
 `Dockerfile` builds the API as a container anyway (multi-stage, `uv`-based), for a possible future
 GPU-enabled cloud deployment, but isn't part of the default `docker compose up` stack.
+
+## .github/workflows/ci.yml (V4)
+
+Runs on push/PR to `main`: checkout, install `uv` (with its cache enabled), `uv sync`,
+`uv run python ingest.py` (embedded Qdrant, indexes the committed `data/pytorch.pdf`), then the
+same two separate `pytest` steps described above. `QDRANT_URL=""` is set as a job-level env var so
+`ingest.py` and the regression test both use embedded mode, no Qdrant/Postgres service containers
+needed. No Langfuse keys are set in CI, so tracing silently no-ops throughout the run. See
+`docs/v4-notes.md` for why CI stays on this fast, self-contained path instead of spinning up the
+real containerized stack.
