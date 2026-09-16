@@ -309,7 +309,12 @@ uv run pytest tests/api/
   done later inside a fixture. This keeps the API test suite from touching the real
   `qdrant_data/`/`app.db`/Langfuse project. A session-scoped `client` fixture wraps the FastAPI
   app in a `TestClient` (models load once for the whole test run); `sample_pdf_path` slices the
-  first 2 pages of `data/pytorch.pdf` for fast upload tests.
+  first 2 pages of `data/pytorch.pdf` for fast upload tests. If `MOCK_LLM=1` is set (CI only, see
+  below), the same fixture replaces `rag.llm.generate`/`warm_up` with a no-op *before* the
+  `TestClient` triggers the API's startup, so the real 3B model never loads on the GPU-less CI
+  runner. Retrieval stays real either way, embeddings/BM25/reranker are all fast on CPU too,
+  only generation is expensive enough to be worth skipping. Unset locally, so a dev machine
+  always runs the real model.
 - `tests/api/test_api.py`: health check; full document lifecycle (upload, poll until `ready`,
   query, feedback, delete, confirm gone); two 404 cases (unknown `query_id`, unknown document id).
 - `tests/test_metrics.py`: unit tests for every `evaluation/metrics.py` function, pure logic, no
@@ -347,6 +352,9 @@ Runs on push/PR to `main`: checkout, install `uv` (with its cache enabled), `uv 
 `uv run python ingest.py` (embedded Qdrant, indexes the committed `data/pytorch.pdf`), then the
 same two separate `pytest` steps described above. `QDRANT_URL=""` is set as a job-level env var so
 `ingest.py` and the regression test both use embedded mode, no Qdrant/Postgres service containers
-needed. No Langfuse keys are set in CI, so tracing silently no-ops throughout the run. See
+needed. No Langfuse keys are set in CI, so tracing silently no-ops throughout the run. The API
+test step additionally sets `MOCK_LLM=1` (see `tests/api/conftest.py` above), skipping the one
+real LLM generation call that's otherwise the slowest thing in the suite on a GPU-less runner. See
 `docs/v4-notes.md` for why CI stays on this fast, self-contained path instead of spinning up the
-real containerized stack.
+real containerized stack, and for the ~25 minute cold-cache cost this was actually observed to
+have while `uv.lock` was still changing every commit.

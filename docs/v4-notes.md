@@ -134,16 +134,31 @@ not to reproduce V2's exact numbers.
 
 `.github/workflows/ci.yml`: checkout, `uv sync`, `uv run python ingest.py` (embedded Qdrant,
 `data/pytorch.pdf`, already committed to the repo), then the two separate `pytest` steps above. No
-service containers, no Langfuse (keys aren't set in CI, so tracing silently no-ops), a few minutes
-total. This mirrors the same "smallest useful version" reasoning used throughout the project: CI
-proves the application logic and retrieval quality don't regress, it doesn't re-prove the
-`docker-compose` networking works, that's covered by the manual verification below.
+service containers, no Langfuse (keys aren't set in CI, so tracing silently no-ops). This mirrors
+the same "smallest useful version" reasoning used throughout the project: CI proves the
+application logic and retrieval quality don't regress, it doesn't re-prove the `docker-compose`
+networking works, that's covered by the manual verification below.
 
 One accepted cost: `torch` is pinned to a CUDA build (`pytorch-cu126` index, ~2.4GB) for local GPU
 use, and CI installs the exact same lockfile, so every CI run downloads that same large wheel even
 though the GitHub-hosted runner has no GPU (it just runs on CPU, `llm.py` already handles that
 fallback). Maintaining a second, CPU-only dependency set just for CI was judged not worth the
-added complexity for this project's scale, `astral-sh/setup-uv`'s cache mitigates the repeat cost.
+added complexity for this project's scale, `astral-sh/setup-uv`'s cache mitigates the repeat cost,
+**but only once `uv.lock` stops changing**: while dependencies were still being added commit to
+commit (through V3 and V4 Part 1/2), the lockfile changed almost every push, so
+`astral-sh/setup-uv`'s cache (keyed on the lockfile) missed on every single run, downloading the
+full 2.4GB wheel fresh each time. Real observed cost during that churn: a single CI run took up to
+~25 minutes.
+
+The other real cost, not solved by caching: `tests/api/` makes one genuine `POST /query` call,
+which runs a real Qwen2.5-3B generation, loading the model and producing up to 400 tokens on CPU
+(no GPU on GitHub-hosted runners), noticeably slower than the same call on this machine's RTX 4060.
+Fixed with `MOCK_LLM=1` (CI-only env var, set only on the API test step): `tests/api/conftest.py`
+swaps `rag.llm.generate` and `rag.llm.warm_up` for a canned no-op before the API starts, so that
+one test still exercises the real HTTP layer, real DB, and real retrieval (embeddings, BM25,
+reranker all stay real, they're fast on CPU anyway), just not real generation. Locally,
+`MOCK_LLM` is unset, so `pytest tests/api/` on a dev machine always runs the real model, unchanged
+from before this existed.
 
 ## Dual-mode Qdrant client
 
