@@ -35,3 +35,8 @@ EVAL_NUM_QUESTIONS = int(os.getenv("EVAL_NUM_QUESTIONS", "30"))
 EVAL_SEED = int(os.getenv("EVAL_SEED", "42"))
 EVAL_DATASET_PATH = os.getenv("EVAL_DATASET_PATH", "./evaluation/dataset.json")
 EVAL_RESULTS_PATH = os.getenv("EVAL_RESULTS_PATH", "./evaluation/results.csv")
+
+# Observability (Langfuse Cloud). Blank keys disable tracing entirely, see src/rag/tracing.py.
+LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY", "")
+LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY", "")
+LANGFUSE_BASE_URL = os.getenv("LANGFUSE_BASE_URL", "https://cloud.langfuse.com")

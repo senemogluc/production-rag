@@ -1,6 +1,6 @@
 from qdrant_client.models import Fusion, FusionQuery, Prefetch
 
-from rag import config
+from rag import config, tracing
 from rag.embeddings import embed_query
 from rag.indexing import get_qdrant_client
 from rag.reranker import rerank
@@ -59,12 +59,25 @@ def retrieve(
     if mode not in VALID_MODES:
         raise ValueError(f"Unknown retrieval mode '{mode}'. Expected one of {VALID_MODES}.")
 
-    if mode == "dense":
-        return _retrieve_dense(question, top_k)
+    with tracing.observation(
+        "retrieval",
+        as_type="retriever",
+        input=question,
+        metadata={"mode": mode, "top_k": top_k},
+    ) as obs:
+        if mode == "dense":
+            results = _retrieve_dense(question, top_k)
+        elif mode == "hybrid":
+            results = _retrieve_hybrid(question, top_k)
+        else:
+            # hybrid_reranker
+            candidates = _retrieve_hybrid(question, config.CANDIDATE_K)
+            results = rerank(question, candidates, top_k)
 
-    if mode == "hybrid":
-        return _retrieve_hybrid(question, top_k)
-
-    # hybrid_reranker
-    candidates = _retrieve_hybrid(question, config.CANDIDATE_K)
-    return rerank(question, candidates, top_k)
+        if obs:
+            obs.update(
+                output=[
+                    {"source": c.source, "page": c.page, "score": c.score} for c in results
+                ]
+            )
+        return results

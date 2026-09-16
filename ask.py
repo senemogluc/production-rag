@@ -1,6 +1,6 @@
 import argparse
 
-from rag import config
+from rag import config, tracing
 from rag.pipeline import answer_question
 
 
@@ -31,6 +31,8 @@ def main():
             continue
         seen.add(key)
         print(f"- {chunk.source}, page {chunk.page} (score={chunk.score:.4f})")
+
+    tracing.flush()
 
 
 if __name__ == "__main__":

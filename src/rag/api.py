@@ -6,7 +6,7 @@ from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, UploadFile
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from rag import config, indexing, llm
+from rag import config, indexing, llm, tracing
 from rag.db import SessionLocal, get_db, init_db
 from rag.db_models import DocumentRecord, FeedbackRecord, QueryLog
 from rag.embeddings import get_embedding_model
@@ -32,6 +32,7 @@ async def lifespan(app: FastAPI):
     get_sparse_model()
     llm.warm_up()
     yield
+    tracing.flush()
 
 
 app = FastAPI(

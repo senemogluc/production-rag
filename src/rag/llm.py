@@ -3,7 +3,7 @@ from functools import lru_cache
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from rag import config
+from rag import config, tracing
 
 SYSTEM_PROMPT = (
     "You are a helpful assistant that answers questions using only the provided context. "
@@ -31,21 +31,40 @@ def warm_up():
 def generate(system_prompt: str, user_prompt: str, max_new_tokens: int = 400) -> str:
     tokenizer, model = _load_model()
 
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt},
-    ]
-    prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+    with tracing.observation(
+        "generation",
+        as_type="generation",
+        model=config.LLM_MODEL,
+        input=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
+        model_parameters={"max_new_tokens": max_new_tokens, "do_sample": False},
+    ) as obs:
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+        prompt = tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+        inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
 
-    output = model.generate(
-        **inputs,
-        max_new_tokens=max_new_tokens,
-        do_sample=False,
-        pad_token_id=tokenizer.eos_token_id,
-    )
-    generated = output[0][inputs["input_ids"].shape[1] :]
-    return tokenizer.decode(generated, skip_special_tokens=True).strip()
+        output = model.generate(
+            **inputs,
+            max_new_tokens=max_new_tokens,
+            do_sample=False,
+            pad_token_id=tokenizer.eos_token_id,
+        )
+        generated_ids = output[0][inputs["input_ids"].shape[1] :]
+        text = tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
+
+        if obs:
+            obs.update(
+                output=text,
+                usage_details={
+                    "input": inputs["input_ids"].shape[1],
+                    "output": len(generated_ids),
+                },
+            )
+        return text
 
 
 def generate_answer(question: str, context: str, max_new_tokens: int = 400) -> str:
