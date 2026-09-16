@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      # Embedded Qdrant, no service containers: this CI job proves the application logic and
+      # retrieval quality don't regress, it doesn't re-prove the docker-compose networking works
+      # (that's covered by manual verification, see docs/v4-notes.md).
+      QDRANT_URL: ""
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Index the corpus (embedded Qdrant, data/pytorch.pdf)
+        run: uv run python ingest.py
+
+      # Two separate pytest invocations, not one: tests/api/conftest.py isolates Qdrant/DB via
+      # os.environ at import time, and that isolation is process-wide once rag.config caches it,
+      # so running tests/api/ in the same process as the eval regression test would silently
+      # point the regression test at an empty index. See tests/api/conftest.py and
+      # tests/test_eval_regression.py for the full explanation.
+      - name: Run unit and regression tests
+        run: uv run pytest tests/ --ignore=tests/api -v
+
+      - name: Run API integration tests
+        run: uv run pytest tests/api/ -v
