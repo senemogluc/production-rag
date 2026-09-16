@@ -272,11 +272,10 @@ warms up all three models (embedding, sparse, LLM) so the first request isn't sl
 
 ## docker-compose.yml, Dockerfile (V4)
 
-`docker-compose.yml` brings up the RAG app's data services (`qdrant`, `postgres`) plus a
-self-hosted Langfuse stack (`langfuse-web`, `langfuse-worker`, `langfuse-postgres`, `clickhouse`,
-`redis`, `minio`), adapted from Langfuse's official compose file. The API itself is **not** in
-this file, it runs on the host via `serve.py` so it can use the GPU directly. See
-`docs/v4-notes.md` for the full reasoning, including two real bugs found while wiring this up.
+`docker-compose.yml` brings up the RAG app's data services, `qdrant` and `postgres`. The API
+itself is **not** in this file, it runs on the host via `serve.py` so it can use the GPU directly.
+Observability is Langfuse Cloud (not self-hosted, see `docs/v4-notes.md` for why), so no Langfuse
+containers live here either.
 
 `Dockerfile` builds the API as a container anyway (multi-stage, `uv`-based), for a possible future
 GPU-enabled cloud deployment, but isn't part of the default `docker compose up` stack.

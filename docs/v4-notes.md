@@ -13,11 +13,9 @@ services via Docker Compose, with the API itself still running on the host.
 | Qdrant | embedded, `QdrantClient(path=...)` | real server container, `QdrantClient(url=...)` |
 | Database | SQLite file | PostgreSQL container |
 | API | host-run | still host-run (see below) |
-| Observability | none | self-hosted Langfuse (containers up, tracing code not wired in yet) |
+| Observability | none | Langfuse Cloud (free tier, keys set, tracing code not wired in yet) |
 
-`docker-compose.yml` brings up 8 containers: `qdrant`, `postgres` (the app's own database), and
-Langfuse's own stack (`langfuse-web`, `langfuse-worker`, `langfuse-postgres`, `clickhouse`,
-`redis`, `minio`), adapted from Langfuse's official compose file.
+`docker-compose.yml` brings up 2 containers: `qdrant` and `postgres`, the app's own database.
 
 ## Why the API stays host-run
 
@@ -31,17 +29,29 @@ An API `Dockerfile` was still written (multi-stage, `uv`-based) since the roadma
 useful for a future GPU-enabled cloud deployment, but it is not part of the default
 `docker compose up` stack, and would run on CPU only as written.
 
-## Why self-hosted Langfuse, and what that costs
+## Why Langfuse Cloud, not self-hosted
 
-Two options existed: Langfuse Cloud (lightweight, but sends trace data to a third-party SaaS,
-breaking the fully-local story used everywhere else in this project) or self-hosted (heavier, but
-consistent with "everything runs locally"). Self-hosted was chosen. The real cost: 6 extra
-containers, 8GB+ RAM recommended, 20GB+ disk. This is a legitimate trade-off for a portfolio
-project, not something to gloss over.
+Self-hosted Langfuse was tried first: `langfuse-web`, `langfuse-worker`, and four supporting
+services (`langfuse-postgres`, `clickhouse`, `redis`, `minio`), adapted from Langfuse's official
+compose file. It worked (see the password-mismatch bug below, found and fixed while getting it
+running), but stepping back, it was 6 extra containers, 8GB+ RAM, 20GB+ disk, just to trace
+queries for a single-developer local project. That's real infrastructure for a problem that
+doesn't need it here.
 
-The Langfuse project and API keys are already set up (`LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY`
-in `.env`). The actual tracing code (spans for retrieval, reranking, generation) is Part 2, not
-written yet, so nothing is traced to Langfuse yet even though the containers are running.
+Switched to Langfuse Cloud's free Hobby tier instead: 50k units/month (a unit is roughly one
+trace/span/score, so tens of thousands of queries/month of headroom), no credit card, a 30-day
+rolling retention window (data stays accessible for 30 days after being sent, then ages out,
+sending never stops). The containers were torn down (`docker compose rm`, volumes removed), and
+`docker-compose.yml` now only has `qdrant` and `postgres`. The trade-off: trace data (questions,
+answers, retrieval scores, latencies) now leaves the machine, the one part of this project that
+isn't fully local. Given traces are operational metadata, not the retrieval/generation pipeline
+itself (which stays 100% local, no API keys, same as V0), this was judged an acceptable, honestly
+documented exception, not a silent compromise.
+
+The Langfuse project and API keys are set up (`LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` in
+`.env`, pointing at `https://cloud.langfuse.com`). The actual tracing code (spans for retrieval,
+reranking, generation) is Part 2, not written yet, so nothing is traced yet even though the keys
+are configured.
 
 ## Dual-mode Qdrant client
 
@@ -59,32 +69,31 @@ server is the new default. Blanking `QDRANT_URL` in `.env` falls back to V0-V3's
 Docker required, verified working both ways, not just documented. `tests/test_api.py` forces this
 fallback (`QDRANT_URL=""`) so the test suite never depends on a running container.
 
-## Two real bugs found while verifying this
+## Real bugs found while verifying this
 
-Both only showed up once talking to a real Qdrant/Postgres over the network, embedded mode and
-SQLite never exercised these code paths.
+Only showed up once talking to a real Qdrant over the network, embedded mode never exercised this
+code path: bulk-upserting all 8,813 chunks in one request hit Qdrant server's 32MB HTTP request
+size limit (`~89MB` payload once real vectors and text are included). Fixed by batching
+`index_chunks()`'s upsert into groups of 256 points, which also benefits the API's incremental
+per-document indexing path.
 
-1. **Langfuse password mismatch.** `langfuse-postgres`'s password was set via
-   `LANGFUSE_POSTGRES_PASSWORD`, but the connection string Langfuse's own services actually use
-   (`DATABASE_URL` in their compose, renamed `LANGFUSE_DATABASE_URL` here to avoid colliding with
-   the app's own `DATABASE_URL`) still had the literal default password hardcoded. Fixed by
-   setting `LANGFUSE_DATABASE_URL` explicitly to match.
-2. **Qdrant's HTTP request size limit.** Bulk-upserting all 8,813 chunks in one request hit
-   Qdrant server's 32MB request size limit (`~89MB` payload once real vectors and text are
-   included). Embedded mode has no such limit since it skips the HTTP layer entirely. Fixed by
-   batching `index_chunks()`'s upsert into groups of 256 points, which also benefits the API's
-   incremental per-document indexing path.
+(While self-hosted Langfuse was still in the stack, a similar class of bug showed up there too:
+`langfuse-postgres`'s password was set via one env var but the connection string Langfuse's own
+services actually used still had the default hardcoded, fixed by setting it explicitly. Moot now
+that self-hosted Langfuse is gone, kept here only as the reason that detour is worth mentioning at
+all: real infrastructure surfaces real integration bugs, which is itself part of why it turned out
+to be more than this project needed.)
 
 ## Verified working
 
-- `docker compose up -d` brings up all 8 containers, all reach healthy status.
+- `docker compose up -d` brings up `qdrant` and `postgres`, both reach healthy status.
 - `uv run python ingest.py` and `uv run python ask.py "..." --mode hybrid` work against the
   containerized Qdrant.
 - `uv run python serve.py` + `GET /health` returns `{"status":"ok","qdrant":true,"database":true}`
   against containerized Postgres and Qdrant together.
 - Setting `QDRANT_URL=""` switches back to embedded mode and finds the old V0-V3 `qdrant_data/`
   collection, confirming the fallback is real.
-- Langfuse UI (`http://localhost:3000`) is reachable, project and API keys are created.
+- Langfuse Cloud project and API keys are created and in `.env`.
 
 ## Still to do (Part 2)
 
