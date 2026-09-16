@@ -36,5 +36,10 @@ jobs:
       - name: Run unit and regression tests
         run: uv run pytest tests/ --ignore=tests/api -v
 
+      # MOCK_LLM=1: CI has no GPU, so a real Qwen2.5-3B generation (model load + up to 400
+      # tokens) is the slowest single thing in the suite. Retrieval (embeddings, BM25, reranker)
+      # stays real, it's fast on CPU too. See tests/api/conftest.py for what's actually mocked.
       - name: Run API integration tests
+        env:
+          MOCK_LLM: "1"
         run: uv run pytest tests/api/ -v

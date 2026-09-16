@@ -28,9 +28,24 @@ from pypdf import PdfReader, PdfWriter  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
+# CI has no GPU, so a real Qwen2.5-3B generation call (loading the model + producing up to 400
+# tokens) is the slowest single thing in the whole suite. Retrieval (BGE-small, BM25, the
+# reranker) stays real either way, it's fast on CPU too. Set MOCK_LLM=1 (CI only, see
+# .github/workflows/ci.yml) to swap in a canned response instead. Unset locally, so `pytest
+# tests/api/` on a dev machine always exercises the real model, same as before this existed.
+MOCK_LLM = os.environ.get("MOCK_LLM") == "1"
+
 
 @pytest.fixture(scope="session")
 def client():
+    from rag import llm
+
+    if MOCK_LLM:
+        llm.generate = lambda system_prompt, user_prompt, max_new_tokens=400: (
+            "Mocked answer (MOCK_LLM=1): real generation is skipped in CI, see tests/api/conftest.py."
+        )
+        llm.warm_up = lambda: None
+
     from rag.api import app
 
     with TestClient(app) as c:
