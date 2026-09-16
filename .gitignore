@@ -223,6 +223,9 @@ CLAUDE.md
 # Internal planning doc, not part of the shipped project
 production_rag_roadmap.md
 
+# Personal Turkish study notes, not part of the (English) portfolio docs
+ders-notlari.md
+
 # Qdrant embedded/on-disk storage
 qdrant_data/
 
