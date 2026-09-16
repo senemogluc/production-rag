@@ -17,12 +17,19 @@ RETRIEVAL_MODE = os.getenv("RETRIEVAL_MODE", "dense")
 SPARSE_MODEL = os.getenv("SPARSE_MODEL", "Qdrant/bm25")
 RERANKER_MODEL = os.getenv("RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
 
+# If QDRANT_URL is set, connect to a real Qdrant server (e.g. the docker-compose "qdrant"
+# service). If blank, fall back to embedded/on-disk mode at QDRANT_PATH (no Docker needed).
+QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
 QDRANT_PATH = os.getenv("QDRANT_PATH", "./qdrant_data")
 QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "documents")
 DATA_DIR = os.getenv("DATA_DIR", "./data")
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "./data/uploads")
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./app.db")
+# Defaults to the docker-compose "postgres" service. Override with a sqlite:/// URL to run
+# without Docker.
+DATABASE_URL = os.getenv(
+    "DATABASE_URL", "postgresql+psycopg://raguser:ragpass@localhost:5432/production_rag"
+)
 
 EVAL_NUM_QUESTIONS = int(os.getenv("EVAL_NUM_QUESTIONS", "30"))
 EVAL_SEED = int(os.getenv("EVAL_SEED", "42"))

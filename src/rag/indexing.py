@@ -48,6 +48,8 @@ def chunk_documents(documents):
 
 
 def get_qdrant_client() -> QdrantClient:
+    if config.QDRANT_URL:
+        return QdrantClient(url=config.QDRANT_URL)
     return QdrantClient(path=config.QDRANT_PATH)
 
 
@@ -95,7 +97,16 @@ def index_chunks(client: QdrantClient, chunks, document_id: str) -> int:
             zip(chunks, dense_vectors, sparse_vectors)
         )
     ]
-    client.upsert(collection_name=config.QDRANT_COLLECTION, points=points)
+    # Batched: a single request with thousands of points can exceed Qdrant's HTTP request
+    # size limit (32MB by default) once real vectors + text payloads are included. Embedded
+    # mode has no such limit since it skips the HTTP layer, so this only bites once talking to
+    # a real Qdrant server.
+    batch_size = 256
+    for start in range(0, len(points), batch_size):
+        client.upsert(
+            collection_name=config.QDRANT_COLLECTION,
+            points=points[start : start + batch_size],
+        )
     return len(points)
 
 

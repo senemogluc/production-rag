@@ -6,6 +6,7 @@ from pathlib import Path
 # that imports it) is ever imported. rag.config reads these via os.getenv() at import time, so
 # this must happen at module load, not inside a fixture.
 _TEST_ROOT = Path(tempfile.mkdtemp(prefix="production_rag_test_"))
+os.environ["QDRANT_URL"] = ""  # force embedded mode, no real Qdrant server needed for tests
 os.environ["QDRANT_PATH"] = str(_TEST_ROOT / "qdrant_data")
 os.environ["QDRANT_COLLECTION"] = "test_documents"
 os.environ["DATABASE_URL"] = f"sqlite:///{_TEST_ROOT / 'test_app.db'}"
